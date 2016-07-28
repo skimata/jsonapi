@@ -10,7 +10,95 @@ import (
 )
 
 type BadModel struct {
-	Id int `jsonapi:"primary"`
+	ID int `jsonapi:"primary"`
+}
+
+type WithPointer struct {
+	ID       string   `jsonapi:"primary,with-pointers"`
+	Name     *string  `jsonapi:"attr,name"`
+	IsActive *bool    `jsonapi:"attr,is-active"`
+	IntVal   *int     `jsonapi:"attr,int-val"`
+	FloatVal *float32 `jsonapi:"attr,float-val"`
+}
+
+func TestUnmarshalToStructWithPointerAttr(t *testing.T) {
+	out := new(WithPointer)
+	in := map[string]interface{}{
+		"name":      "The name",
+		"is-active": true,
+		"int-val":   8,
+		"float-val": 1.1,
+	}
+	if err := UnmarshalPayload(sampleWithPointerPayload(in), out); err != nil {
+		t.Fatal(err)
+	}
+	if *out.Name != "The name" {
+		t.Fatalf("Error unmarshalling to string ptr")
+	}
+	if *out.IsActive != true {
+		t.Fatalf("Error unmarshalling to bool ptr")
+	}
+	if *out.IntVal != 8 {
+		t.Fatalf("Error unmarshalling to int ptr")
+	}
+	if *out.FloatVal != 1.1 {
+		t.Fatalf("Error unmarshalling to float ptr")
+	}
+}
+
+func TestUnmarshalToStructWithPointerAttr_AbsentVal(t *testing.T) {
+	out := new(WithPointer)
+	in := map[string]interface{}{
+		"name":      "The name",
+		"is-active": true,
+	}
+
+	if err := UnmarshalPayload(sampleWithPointerPayload(in), out); err != nil {
+		t.Fatalf("Error unmarshalling to Foo")
+	}
+
+	// these were present in the payload -- expect val to be not nil
+	if out.Name == nil || out.IsActive == nil {
+		t.Fatalf("Error unmarshalling; expected ptr to be not nil")
+	}
+
+	// these were absent in the payload -- expect val to be nil
+	if out.IntVal != nil || out.FloatVal != nil {
+		t.Fatalf("Error unmarshalling; expected ptr to be nil")
+	}
+}
+
+func TestStringPointerField(t *testing.T) {
+	// Build Book payload
+	description := "Hello World!"
+	data := map[string]interface{}{
+		"data": map[string]interface{}{
+			"type": "books",
+			"id":   "5",
+			"attributes": map[string]interface{}{
+				"author":      "aren55555",
+				"description": description,
+				"isbn":        "",
+			},
+		},
+	}
+	payload, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse JSON API payload
+	book := new(Book)
+	if err := UnmarshalPayload(bytes.NewReader(payload), book); err != nil {
+		t.Fatal(err)
+	}
+
+	if book.Description == nil {
+		t.Fatal("Was not expecting a nil pointer for book.Description")
+	}
+	if expected, actual := description, *book.Description; expected != actual {
+		t.Fatalf("Was expecting descript to be `%s`, got `%s`", expected, actual)
+	}
 }
 
 type Foo struct {
@@ -86,16 +174,16 @@ func TestUnmarshalInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestUnmarshalSetsId(t *testing.T) {
-	in := samplePayloadWithId()
+func TestUnmarshalSetsID(t *testing.T) {
+	in := samplePayloadWithID()
 	out := new(Blog)
 
 	if err := UnmarshalPayload(in, out); err != nil {
 		t.Fatal(err)
 	}
 
-	if out.Id != 2 {
-		t.Fatalf("Did not set Id on dst interface")
+	if out.ID != 2 {
+		t.Fatalf("Did not set ID on dst interface")
 	}
 }
 
@@ -111,6 +199,23 @@ func TestUnmarshalSetsAttrs(t *testing.T) {
 
 	if out.ViewCount != 1000 {
 		t.Fatalf("View count not properly serialized")
+	}
+}
+
+func TestUnmarshalRelationshipsWithoutIncluded(t *testing.T) {
+	data, _ := samplePayloadWithoutIncluded()
+	in := bytes.NewReader(data)
+	out := new(Post)
+
+	if err := UnmarshalPayload(in, out); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify each comment has at least an ID
+	for _, comment := range out.Comments {
+		if comment.ID == 0 {
+			t.Fatalf("The comment did not have an ID")
+		}
 	}
 }
 
@@ -130,6 +235,74 @@ func TestUnmarshalRelationships(t *testing.T) {
 
 	if len(out.Posts) != 2 {
 		t.Fatalf("There should have been 2 posts")
+	}
+}
+
+func TestUnmarshalNullRelationship(t *testing.T) {
+	sample := map[string]interface{}{
+		"data": map[string]interface{}{
+			"type": "posts",
+			"id":   "1",
+			"attributes": map[string]interface{}{
+				"body":  "Hello",
+				"title": "World",
+			},
+			"relationships": map[string]interface{}{
+				"latest_comment": map[string]interface{}{
+					"data": nil, //set data to nil/null
+				},
+			},
+		},
+	}
+	data, err := json.Marshal(sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	in := bytes.NewReader(data)
+	out := new(Post)
+
+	if err := UnmarshalPayload(in, out); err != nil {
+		t.Fatal(err)
+	}
+
+	if out.LatestComment != nil {
+		t.Fatalf("Latest Comment was not set to nil")
+	}
+}
+
+func TestUnmarshalNullRelationshipInSlice(t *testing.T) {
+	sample := map[string]interface{}{
+		"data": map[string]interface{}{
+			"type": "posts",
+			"id":   "1",
+			"attributes": map[string]interface{}{
+				"body":  "Hello",
+				"title": "World",
+			},
+			"relationships": map[string]interface{}{
+				"comments": map[string]interface{}{
+					"data": []interface{}{
+						nil, //set data to nil/null
+					},
+				},
+			},
+		},
+	}
+	data, err := json.Marshal(sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	in := bytes.NewReader(data)
+	out := new(Post)
+
+	if err := UnmarshalPayload(in, out); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(out.Comments) != 0 {
+		t.Fatalf("Wrong number of comments; Comments should be empty")
 	}
 }
 
@@ -254,8 +427,8 @@ func TestUnmarshalNestedRelationshipsEmbedded_withClientIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if model.Posts[0].ClientId == "" {
-		t.Fatalf("ClientId not set from request on related record")
+	if model.Posts[0].ClientID == "" {
+		t.Fatalf("ClientID not set from request on related record")
 	}
 }
 
@@ -268,6 +441,42 @@ func unmarshalSamplePayload() (*Blog, error) {
 	}
 
 	return out, nil
+}
+
+func samplePayloadWithoutIncluded() (result []byte, err error) {
+	data := map[string]interface{}{
+		"data": map[string]interface{}{
+			"type": "posts",
+			"id":   "1",
+			"attributes": map[string]interface{}{
+				"body":  "Hello",
+				"title": "World",
+			},
+			"relationships": map[string]interface{}{
+				"comments": map[string]interface{}{
+					"data": []interface{}{
+						map[string]interface{}{
+							"type": "comments",
+							"id":   "123",
+						},
+						map[string]interface{}{
+							"type": "comments",
+							"id":   "456",
+						},
+					},
+				},
+				"latest_comment": map[string]interface{}{
+					"data": map[string]interface{}{
+						"type": "comments",
+						"id":   "55555",
+					},
+				},
+			},
+		},
+	}
+
+	result, err = json.Marshal(data)
+	return
 }
 
 func samplePayload() io.Reader {
@@ -288,7 +497,7 @@ func samplePayload() io.Reader {
 								"title": "Foo",
 								"body":  "Bar",
 							},
-							ClientId: "1",
+							ClientID: "1",
 						},
 						&Node{
 							Type: "posts",
@@ -296,7 +505,7 @@ func samplePayload() io.Reader {
 								"title": "X",
 								"body":  "Y",
 							},
-							ClientId: "2",
+							ClientID: "2",
 						},
 					},
 				},
@@ -307,7 +516,7 @@ func samplePayload() io.Reader {
 							"title": "Bas",
 							"body":  "Fuubar",
 						},
-						ClientId: "3",
+						ClientID: "3",
 						Relationships: map[string]interface{}{
 							"comments": &RelationshipManyNode{
 								Data: []*Node{
@@ -316,14 +525,14 @@ func samplePayload() io.Reader {
 										Attributes: map[string]interface{}{
 											"body": "Great post!",
 										},
-										ClientId: "4",
+										ClientID: "4",
 									},
 									&Node{
 										Type: "comments",
 										Attributes: map[string]interface{}{
 											"body": "Needs some work!",
 										},
-										ClientId: "5",
+										ClientID: "5",
 									},
 								},
 							},
@@ -335,16 +544,15 @@ func samplePayload() io.Reader {
 	}
 
 	out := bytes.NewBuffer(nil)
-
 	json.NewEncoder(out).Encode(payload)
 
 	return out
 }
 
-func samplePayloadWithId() io.Reader {
+func samplePayloadWithID() io.Reader {
 	payload := &OnePayload{
 		Data: &Node{
-			Id:   "2",
+			ID:   "2",
 			Type: "blogs",
 			Attributes: map[string]interface{}{
 				"title":      "New blog",
@@ -354,7 +562,21 @@ func samplePayloadWithId() io.Reader {
 	}
 
 	out := bytes.NewBuffer(nil)
+	json.NewEncoder(out).Encode(payload)
 
+	return out
+}
+
+func sampleWithPointerPayload(m map[string]interface{}) io.Reader {
+	payload := &OnePayload{
+		Data: &Node{
+			ID:         "2",
+			Type:       "with-pointers",
+			Attributes: m,
+		},
+	}
+
+	out := bytes.NewBuffer(nil)
 	json.NewEncoder(out).Encode(payload)
 
 	return out
@@ -378,66 +600,66 @@ func sampleFooPayload(m map[string]interface{}) io.Reader {
 
 func testModel() *Blog {
 	return &Blog{
-		Id:        5,
-		ClientId:  "1",
+		ID:        5,
+		ClientID:  "1",
 		Title:     "Title 1",
 		CreatedAt: time.Now(),
 		Posts: []*Post{
 			&Post{
-				Id:    1,
+				ID:    1,
 				Title: "Foo",
 				Body:  "Bar",
 				Comments: []*Comment{
 					&Comment{
-						Id:   1,
+						ID:   1,
 						Body: "foo",
 					},
 					&Comment{
-						Id:   2,
+						ID:   2,
 						Body: "bar",
 					},
 				},
 				LatestComment: &Comment{
-					Id:   1,
+					ID:   1,
 					Body: "foo",
 				},
 			},
 			&Post{
-				Id:    2,
+				ID:    2,
 				Title: "Fuubar",
 				Body:  "Bas",
 				Comments: []*Comment{
 					&Comment{
-						Id:   1,
+						ID:   1,
 						Body: "foo",
 					},
 					&Comment{
-						Id:   3,
+						ID:   3,
 						Body: "bas",
 					},
 				},
 				LatestComment: &Comment{
-					Id:   1,
+					ID:   1,
 					Body: "foo",
 				},
 			},
 		},
 		CurrentPost: &Post{
-			Id:    1,
+			ID:    1,
 			Title: "Foo",
 			Body:  "Bar",
 			Comments: []*Comment{
 				&Comment{
-					Id:   1,
+					ID:   1,
 					Body: "foo",
 				},
 				&Comment{
-					Id:   2,
+					ID:   2,
 					Body: "bar",
 				},
 			},
 			LatestComment: &Comment{
-				Id:   1,
+				ID:   1,
 				Body: "foo",
 			},
 		},
@@ -458,7 +680,6 @@ func sampleSerializedEmbeddedTestModel() *Blog {
 	MarshalOnePayloadEmbedded(out, testModel())
 
 	blog := new(Blog)
-
 	UnmarshalPayload(out, blog)
 
 	return blog

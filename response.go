@@ -37,6 +37,26 @@ func MarshalOnePayload(w io.Writer, model interface{}) error {
 	return nil
 }
 
+// MarshalOnePayloadWithoutIncluded writes a jsonapi response with one object,
+// without the related records sideloaded into "included" array. If you want to
+// serialzie the realtions into the "included" array see MarshalOnePayload.
+//
+// model interface{} should be a pointer to a struct.
+func MarshalOnePayloadWithoutIncluded(w io.Writer, model interface{}) error {
+	included := make(map[string]*Node)
+
+	rootNode, err := visitModelNode(model, &included, true)
+	if err != nil {
+		return err
+	}
+
+	if err := json.NewEncoder(w).Encode(&OnePayload{Data: rootNode}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // MarshalOne does the same as MarshalOnePayload except it just returns the payload
 // and doesn't write out results.
 // Useful is you use your JSON rendering library.
@@ -74,7 +94,7 @@ func MarshalOne(model interface{}) (*OnePayload, error) {
 //	 }
 //
 //
-// Visit https://github.com/shwoodard/jsonapi#list for more info.
+// Visit https://github.com/google/jsonapi#list for more info.
 //
 // models interface{} should be a slice of struct pointers.
 func MarshalManyPayload(w io.Writer, models interface{}) error {
@@ -183,15 +203,15 @@ func visitModelNode(model interface{}, included *map[string]*Node, sideload bool
 		if annotation == "primary" {
 			id := fieldValue.Interface()
 
-			switch nId := id.(type) {
+			switch nID := id.(type) {
 			case string:
-				node.Id = nId
+				node.ID = nID
 			case int:
-				node.Id = strconv.Itoa(nId)
+				node.ID = strconv.Itoa(nID)
 			case int64:
-				node.Id = strconv.FormatInt(nId, 10)
+				node.ID = strconv.FormatInt(nID, 10)
 			case uint64:
-				node.Id = strconv.FormatUint(nId, 10)
+				node.ID = strconv.FormatUint(nID, 10)
 			default:
 				er = ErrBadJSONAPIID
 				break
@@ -201,7 +221,7 @@ func visitModelNode(model interface{}, included *map[string]*Node, sideload bool
 		} else if annotation == "client-id" {
 			clientID := fieldValue.String()
 			if clientID != "" {
-				node.ClientId = clientID
+				node.ClientID = clientID
 			}
 		} else if annotation == "attr" {
 			var omitEmpty bool
@@ -240,11 +260,16 @@ func visitModelNode(model interface{}, included *map[string]*Node, sideload bool
 					node.Attributes[args[1]] = tm.Unix()
 				}
 			} else {
-				strAttr, ok := fieldValue.Interface().(string)
+				// Dealing with a fieldValue that is not a time
+				emptyValue := reflect.Zero(fieldValue.Type())
 
-				if ok && strAttr == "" && omitEmpty {
+				// See if we need to omit this field
+				if omitEmpty && fieldValue.Interface() == emptyValue.Interface() {
 					continue
-				} else if ok {
+				}
+
+				strAttr, ok := fieldValue.Interface().(string)
+				if ok {
 					node.Attributes[args[1]] = strAttr
 				} else {
 					node.Attributes[args[1]] = fieldValue.Interface()
@@ -312,7 +337,7 @@ func visitModelNode(model interface{}, included *map[string]*Node, sideload bool
 
 func toShallowNode(node *Node) *Node {
 	return &Node{
-		Id:   node.Id,
+		ID:   node.ID,
 		Type: node.Type,
 	}
 }
@@ -341,7 +366,7 @@ func appendIncluded(m *map[string]*Node, nodes ...*Node) {
 	included := *m
 
 	for _, n := range nodes {
-		k := fmt.Sprintf("%s,%s", n.Type, n.Id)
+		k := fmt.Sprintf("%s,%s", n.Type, n.ID)
 
 		if _, hasNode := included[k]; hasNode {
 			continue

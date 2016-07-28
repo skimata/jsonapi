@@ -1,16 +1,16 @@
 # jsonapi
 
-[![Build Status](https://travis-ci.org/shwoodard/jsonapi.svg?branch=master)](https://travis-ci.org/shwoodard/jsonapi)
+[![Build Status](https://travis-ci.org/google/jsonapi.svg?branch=master)](https://travis-ci.org/google/jsonapi)
 
 A serailizer/deserializer for json payloads that comply to the
 [JSON API - jsonapi.org](http://jsonapi.org) spec in go.
 
-Also visit, [Godoc](http://godoc.org/github.com/shwoodard/jsonapi).
+Also visit, [Godoc](http://godoc.org/github.com/google/jsonapi).
 
 ## Installation
 
 ```
-go get -u github.com/shwoodard/jsonapi
+go get -u github.com/google/jsonapi
 ```
 
 Or, see [Alternative Installation](#alternative-installation).
@@ -42,7 +42,7 @@ that look similar to these:
 
 ```go
 type Blog struct {
-	Id            int       `json:"id"`
+	ID            int       `json:"id"`
 	Title         string    `json:"title"`
 	Posts         []*Post   `json:"posts"`
 	CurrentPost   *Post     `json:"current_post"`
@@ -52,8 +52,8 @@ type Blog struct {
 }
 
 type Post struct {
-	Id       int        `json:"id"`
-	BlogId   int        `json:"blog_id"`
+	ID       int        `json:"id"`
+	BlogID   int        `json:"blog_id"`
 	Title    string     `json:"title"`
 	Body     string     `json:"body"`
 	Comments []*Comment `json:"comments"`
@@ -61,8 +61,9 @@ type Post struct {
 
 type Comment struct {
 	Id     int    `json:"id"`
-	PostId int    `json:"post_id"`
+	PostID int    `json:"post_id"`
 	Body   string `json:"body"`
+	Likes  uint   `json:"likes_count,omitempty"`
 }
 ```
 
@@ -73,7 +74,7 @@ all of your data easily.
 
 ## Example App
 
-[examples/app.go](https://github.com/shwoodard/jsonapi/blob/master/examples/app.go)
+[examples/app.go](https://github.com/google/jsonapi/blob/master/examples/app.go)
 
 This runnable file demonstrates the implementation of a create, a show,
 and a list [http.Handler](http://golang.org/pkg/net/http#Handler).  It
@@ -88,10 +89,10 @@ To run,
 * Create the following directories or similar: `~/go`
 * `cd` there
 * Set `GOPATH` to `PWD` in your shell session, `export GOPATH=$PWD`
-* `go get github.com/shwoodard/jsonapi`.  (Append `-u` after `get` if you
+* `go get github.com/google/jsonapi`.  (Append `-u` after `get` if you
   are updating.)
-* `go run src/github.com/shwoodard/jsonapi/examples/app.go` or `cd
-  src/github.com/shwoodard/jsonapi/examples && go run app.go`
+* `go run src/github.com/google/jsonapi/examples/app.go` or `cd
+  src/github.com/google/jsonapi/examples && go run app.go`
 
 ## `jsonapi` Tag Reference
 
@@ -106,27 +107,28 @@ using JSON API tags:
 
 ```go
 type Blog struct {
-	Id            int       `jsonapi:"primary,blogs"`
+	ID            int       `jsonapi:"primary,blogs"`
 	Title         string    `jsonapi:"attr,title"`
 	Posts         []*Post   `jsonapi:"relation,posts"`
 	CurrentPost   *Post     `jsonapi:"relation,current_post"`
-	CurrentPostId int       `jsonapi:"attr,current_post_id"`
+	CurrentPostID int       `jsonapi:"attr,current_post_id"`
 	CreatedAt     time.Time `jsonapi:"attr,created_at"`
 	ViewCount     int       `jsonapi:"attr,view_count"`
 }
 
 type Post struct {
-	Id       int        `jsonapi:"primary,posts"`
-	BlogId   int        `jsonapi:"attr,blog_id"`
+	ID       int        `jsonapi:"primary,posts"`
+	BlogID   int        `jsonapi:"attr,blog_id"`
 	Title    string     `jsonapi:"attr,title"`
 	Body     string     `jsonapi:"attr,body"`
 	Comments []*Comment `jsonapi:"relation,comments"`
 }
 
 type Comment struct {
-	Id     int    `jsonapi:"primary,comments"`
-	PostId int    `jsonapi:"attr,post_id"`
+	ID     int    `jsonapi:"primary,comments"`
+	PostID int    `jsonapi:"attr,post_id"`
 	Body   string `jsonapi:"attr,body"`
+	Likes  uint   `jsonapi:"attr,likes-count,omitempty"`
 }
 ```
 
@@ -149,14 +151,17 @@ types are shown in the examples, but not required.
 #### `attr`
 
 ```
-`jsonapi:"attr,<key name in attributes hash>"`
+`jsonapi:"attr,<key name in attributes hash>,<optional: omitempty>"`
 ```
 
 These fields' values will end up in the `attributes`hash for a record.
 The first argument must be, `attr`, and the second should be the name
-for the key to display in the `attributes` hash for that record. The
-spec indicates that `attributes` key names should be dasherized for
-multiple word field names.
+for the key to display in the `attributes` hash for that record. The optional
+third argument is `omitempty` - if it is present the field will not be present
+in the `"attributes"` if the field's value is equivalent to the field types
+empty value (ie if the `count` field is of type `int`, `omitempty` will omit the
+field when `count` has a value of `0`). Lastly, the spec indicates that
+`attributes` key names should be dasherized for multiple word field names.
 
 #### `relation`
 
@@ -181,7 +186,7 @@ about the rest?
 ### Create Record Example
 
 You can Unmarshal a JSON API payload using
-[jsonapi.UnmarshalPayload](http://godoc.org/github.com/shwoodard/jsonapi#UnmarshalPayload).
+[jsonapi.UnmarshalPayload](http://godoc.org/github.com/google/jsonapi#UnmarshalPayload).
 It reads from an [io.Reader](https://golang.org/pkg/io/#Reader)
 containing a JSON API payload for one record (but can have related
 records).  Then, it materializes a struct that you created and passed in
@@ -190,7 +195,7 @@ the top level, in request payloads at the moment. Bulk creates and
 updates are not supported yet.
 
 After saving your record, you can use,
-[MarshalOnePayload](http://godoc.org/github.com/shwoodard/jsonapi#MarshalOnePayload),
+[MarshalOnePayload](http://godoc.org/github.com/google/jsonapi#MarshalOnePayload),
 to write the JSON API response to an
 [io.Writer](https://golang.org/pkg/io/#Writer).
 
@@ -200,7 +205,7 @@ to write the JSON API response to an
 UnmarshalPayload(in io.Reader, model interface{})
 ```
 
-Visit [godoc](http://godoc.org/github.com/shwoodard/jsonapi#UnmarshalPayload)
+Visit [godoc](http://godoc.org/github.com/google/jsonapi#UnmarshalPayload)
 
 #### `MarshalOnePayload`
 
@@ -208,7 +213,7 @@ Visit [godoc](http://godoc.org/github.com/shwoodard/jsonapi#UnmarshalPayload)
 MarshalOnePayload(w io.Writer, model interface{}) error
 ```
 
-Visit [godoc](http://godoc.org/github.com/shwoodard/jsonapi#MarshalOnePayload)
+Visit [godoc](http://godoc.org/github.com/google/jsonapi#MarshalOnePayload)
 
 Writes a JSON API response, with related records sideloaded, into an
 `included` array.  This method encodes a response for a single record
@@ -245,7 +250,7 @@ func CreateBlog(w http.ResponseWriter, r *http.Request) {
 MarshalManyPayload(w io.Writer, models []interface{}) error
 ```
 
-Visit [godoc](http://godoc.org/github.com/shwoodard/jsonapi#MarshalManyPayload)
+Visit [godoc](http://godoc.org/github.com/google/jsonapi#MarshalManyPayload)
 
 Takes an `io.Writer` and an slice of `interface{}`.  Note, if you have a
 type safe array of your structs, like,
@@ -301,7 +306,7 @@ func ListBlogs(w http.ResponseWriter, r *http.Request) {
 MarshalOnePayloadEmbedded(w io.Writer, model interface{}) error
 ```
 
-Visit [godoc](http://godoc.org/github.com/shwoodard/jsonapi#MarshalOnePayloadEmbedded)
+Visit [godoc](http://godoc.org/github.com/google/jsonapi#MarshalOnePayloadEmbedded)
 
 This method is not strictly meant to for use in implementation code,
 although feel free.  It was mainly created for use in tests; in most cases,
@@ -341,13 +346,13 @@ I use git subtrees to manage dependencies rather than `go get` so that
 the src is committed to my repo.
 
 ```
-git subtree add --squash --prefix=src/github.com/shwoodard/jsonapi https://github.com/shwoodard/jsonapi.git master
+git subtree add --squash --prefix=src/github.com/google/jsonapi https://github.com/google/jsonapi.git master
 ```
 
 To update,
 
 ```
-git subtree pull --squash --prefix=src/github.com/shwoodard/jsonapi https://github.com/shwoodard/jsonapi.git master
+git subtree pull --squash --prefix=src/github.com/google/jsonapi https://github.com/google/jsonapi.git master
 ```
 
 This assumes that I have my repo structured with a `src` dir containing
